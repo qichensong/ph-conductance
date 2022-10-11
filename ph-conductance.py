@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 
 hbar = 1.05457182e-34
 kB = 1.380649e-23
+bohr = 0.529177249
 
 def dBEdT(w,T):
     return (np.exp(hbar*w/kB/T)-1)**-2*np.exp(hbar*w/kB/T)*hbar*w/kB/T**2 
@@ -15,9 +16,9 @@ class conductance:
             contents = yaml.safe_load(stream)
             self.nk = contents['nqpoint']
             self.nw = contents['natom']*3
-            self.cell = np.array(contents['lattice'])
-            self.recivec = np.array(contents['reciprocal_lattice'])
-            self.vol = np.dot(np.cross(self.cell[0,:],self.cell[1,:]),self.cell[2,:])
+            self.cell = np.array(contents['lattice'])*bohr # the unit in QE is bohr
+            self.recivec = np.array(contents['reciprocal_lattice'])/bohr
+            self.vol = np.abs(np.dot(np.cross(self.cell[0,:],self.cell[1,:]),self.cell[2,:]))
             self.omega = np.zeros([self.nk,self.nw])
             self.velocity = np.zeros([self.nk,self.nw,3])
             self.kpoints = np.zeros([self.nk,3])
@@ -28,8 +29,12 @@ class conductance:
                 for j in range(self.nw): 
                     # frequency in unit of THz 
                     self.omega[i,j] = contents['phonon'][i]['band'][j]['frequency']
-                    # velocity in unit of Ang THz 
-                    self.velocity[i,j,:] = np.array(contents['phonon'][i]['band'][j]['group_velocity'])*1e-10*1e12
+                    # velocity in unit of Bohr THz (QE). For VASP, it is Ang THz 
+                    self.velocity[i,j,:] = np.array(contents['phonon'][i]['band'][j]['group_velocity'])*1e-10*1e12*bohr
+
+            #print(np.linalg.norm(self.velocity[0,2,:]))
+            #print(np.linalg.norm(self.velocity[0,1,:]))
+            #print(np.linalg.norm(self.velocity[0,0,:]))
 
             self.total_weight = np.sum(self.weight)
     def cal_T(self,omega_max,nomegaj,direction_index,sigma):
@@ -49,8 +54,8 @@ class conductance:
         self.cond = np.zeros([len(temperatures),])
         for iT in range(len(temperatures)):
             intgd = np.zeros([len(self.omegaj),]) 
-            intgd[1:] = hbar*self.omegaj[1:]*1e12*2*np.pi*dBEdT(self.omegaj[1:]*1e12*2*np.pi,temperatures[iT])*J[1:]/np.pi/2 
-            self.cond[iT] = np.trapz(intgd,self.omegaj*1e12*2*np.pi)*np.pi
+            intgd[1:] = hbar*(self.omegaj[1:]*1e12*2*np.pi)*dBEdT(self.omegaj[1:]*1e12*2*np.pi,temperatures[iT])*J[1:]/np.pi/2 
+            self.cond[iT] = np.trapz(intgd,self.omegaj*1e12*2*np.pi)
     def cal_dmm(self,j2):
         self.Jdmm = np.zeros([len(self.J),]) 
         for w in range(len(self.omegaj)):
@@ -66,16 +71,15 @@ class conductance:
                 self.JEL[w] = j2[w]
         
 
-
-     
-
-
-temp = np.linspace(10,700,500)
-g1 = conductance("si_mesh.yaml")
-g1.cal_T(16,50,[0,0,1],0.1)
+sigma = 0.2
+wmax = 16
+nw = 100
+temp = np.linspace(10,800,500)
+g1 = conductance("si_mesh10.yaml")
+g1.cal_T(wmax,nw,[0,0,1],sigma)
 g1.cal_cond(g1.J,temp)
-g2 = conductance("al_mesh.yaml")
-g2.cal_T(16,50,[0,0,1],0.1)
+g2 = conductance("al_mesh10.yaml")
+g2.cal_T(wmax,nw,[0,0,1],sigma)
 g2.cal_cond(g2.J,temp)
 
 plt.figure(1)
@@ -106,7 +110,7 @@ plt.legend()
 plt.xlabel('Temperature (K)')
 plt.ylabel('Interfacial thermal conductance (W/m^2/K)')
 
-plt.savefig('test.pdf')
+#plt.savefig('test.pdf')
 
 plt.show()
 
